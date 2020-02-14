@@ -4,64 +4,63 @@ from _thread import *
 import socket
 
 
-# print_lock is Lock obj. State either locked or unlocked. Created in unlocked state.
-# methods are accquire()(if unlocked , unlocked->locked if locked blocked until release) and release()(only called on locked state, locked->unlocked)
-host = 'localhost'
-port = 65432
-lock = threading.Lock()
-
-SERVER = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-SERVER.bind((host, port))
-print('socket binded to port ', port)
-
-CONNECTIONS = {}
-ADDRESSES = {}
+class multiConnServer(object) :
+    def __init__(self):
+        self.CONNECTIONS = {}
+        self.ADDRESSES = {}
+        self.host = 'localhost'
+        self.port = 65432
+        self.SERVER = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.SERVER.bind((self.host, self.port))
 
 
-def accept_connection():
 
-    while True:
-        clientSocket, addr = SERVER.accept()
-        print('connected to : ', addr[0], ': ', addr[1])
-        greeter_msg = "Hello from server! \n Enter username here : "
-        clientSocket.send(greeter_msg.encode("utf8"))
-        serv_thread = threading.Thread(target=service_connection,
-                                       args=(clientSocket,))
+
+
+    def handle_connection(self, client, addr):
+        print('----- new user has connected -----')
+        greeter_msg = "username? "
+        client.send(greeter_msg.encode("utf-8"))
+        serv_thread = threading.Thread(target=self.service_connection,
+                                    args=(client,))
         serv_thread.start()
 
 
-def service_connection(client):
+    def service_connection(self, client):
+        uname = client.recv(1024).decode("utf-8")
+        self.CONNECTIONS[client] = uname
+        welcome_msg = "-*-*- Welcome "+ uname +" -*-*-"
+        self.broadcast(welcome_msg, None)
 
-    uname = client.recv(1024).decode("utf8")
-    CONNECTIONS[client] = uname
-    welcome_msg = "Welcome "+uname + " to the chat"
-    broadcast(welcome_msg, client)
-
-    while True:
-        msg = client.recv(1024).decode("utf8")
-        if msg == "end":
-            msg = "has left chat"
-            broadcast(msg, client)
-            del CONNECTIONS[client]
-            break
-        else:
-            broadcast(msg, client)
+        while True:
+            msg = client.recv(1024).decode("utf-8")
+            if msg == "end":
+                msg = "has left chat"
+                self.broadcast(msg, client)
+                del self.CONNECTIONS[client]
+                break
+            else:
+                self.broadcast(msg, client)
 
 
-def broadcast(message, client):
-    uname = CONNECTIONS[client]
-
-    for sockets in CONNECTIONS:
-        if sockets != client:
-
-            print(message)
-            sockets.send((uname + ": " + message).encode("utf8"))
+    def broadcast(self, message, client):
+        for sockets in self.CONNECTIONS:
+            if sockets != client:
+                sockets.send((message).encode("utf8"))
+                
+                
 
 
 if __name__ == '__main__':
-    SERVER.listen(5)
-    print('socket is listening...')
-    connectionThread = threading.Thread(target=accept_connection)
-    connectionThread.start()
-    connectionThread.join()
+
+    server = multiConnServer()
+    server.SERVER.listen(5)
+    print('socket listening on port ', server.port)
+    while True:
+
+        client, addr = server.SERVER.accept()  
+        connectionThread = threading.Thread(target=server.handle_connection, args=(client, addr,))
+        connectionThread.start()
+        connectionThread.join()
+
     SERVER.close()
